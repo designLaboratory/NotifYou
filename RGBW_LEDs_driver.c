@@ -13,6 +13,8 @@
 #define OUT_PIN 				 	 2																					//D2 pin as output
 #define NSEC_TO_TICKS(nsec) ((nsec)*42/1000)													//function to change time to clock ticks
 #define USEC_TO_TICKS(usec) ((usec)*42)															  //function to change time to clock ticks
+/* SYMBOLS DISPLAY */
+#define NUM_OF_NOTIFS			 5																					//Number of different notifications to be displayed
 
 /*----------------------------------------------------------------------------
 			Needed variables initialization
@@ -23,10 +25,16 @@ const uint32_t tpm_p0_period = NSEC_TO_TICKS(250);																				//how much
 const uint32_t tpm_p1_period = NSEC_TO_TICKS(650);																				//how much tiks take high state in zero
 const uint32_t guardtime_period = USEC_TO_TICKS(55);   																		//guardtime minimum 50 usec, time between frames
 
-uint8_t LED_tab[RGB_DIODE_BITS*3];           	 												//RGB table of pixels
+uint8_t LED_tab[NUM_OF_LEDS*3];           	 												//RGB table of pixels - NUM_OF_LEDS/RGB_DIODE_BITS
 uint16_t num_of_LEDs = NUM_OF_LEDS; 																	//Numbers of LEDs in strip as variable
 uint32_t DMA_out_mask = 0;																						//DMA mask setting output
-volatile uint8_t dma_done_status = 1;																	//DMA status variable (volatile intended)
+volatile uint8_t dma_done_status = 1;																	//DMA status variable (volatile intended since DMA_IRQ uses it)
+
+/*----------------------------------------------------------------------------
+			Variables needed for matrix display initialization
+ *----------------------------------------------------------------------------*/
+uint8_t Sym_part[40];																								//Part of whole symbol displayed on RGBs
+uint8_t Notif_tab[NUM_OF_NOTIFS] = {1, 1, 0, 1, 1};									//Table to hold unanswered notofications
 
 /*----------------------------------------------------------------------------
 			DMA DATA STRUCTURE
@@ -137,7 +145,7 @@ enum DMA_CHANNEL {																																				//enum for DMA_MUX CHannel
 		for (i=0; i<DMA_LEAD_ZEROS-1; i++) {
 			dma_data.start_t0_high[i] = 0;																					//Initialize start_t0_high table
 		}
-		for (i=0; i<DMA_TRAIL_ZEROS+1-1; i++) {
+		for (i=0; i<DMA_TRAIL_ZEROS+1; i++) {//usunalem '-1' za +1
 			dma_data.trailing_zeros_2[i] = 0;																				//Initialize trailing_zeros_2 table
 		}
  }
@@ -291,7 +299,7 @@ void turn_pixel_on(uint16_t num_pixel, uint8_t green, uint8_t red, uint8_t blue)
 	}		
 	for (i = 0; i < 8; i++) {																																//change order to LSB---MSB
 		bin_tab_correct[i] = bin_tab[7 - i];		
-		bin_tab_correct[i] *= 4;																															//EVERY element multipied by 255 (for DMA conversion purpose)
+		bin_tab_correct[i] *= 255;																															//EVERY element multipied by 255 (for DMA conversion purpose)
 	}
 	for (i = j; i < (8+j); i++) {																														//Add new elements to dma_words
 		dma_data.dma_words[num_pixel*24+i] = bin_tab_correct[i];
@@ -319,7 +327,7 @@ void turn_pixel_on(uint16_t num_pixel, uint8_t green, uint8_t red, uint8_t blue)
 	}																													
 	for (i = 0; i < 8; i++) {																																//Clearing tables
 		bin_tab[i] = 0;
-		bin_tab_correct[i] = 255;
+		bin_tab_correct[i] = 0;
 	}	
 	j = 16; i = 0; 																	  																			//Clear 'i' and change value of 'j'
 	
@@ -396,7 +404,7 @@ void set_matrix_off(void) {
 }
 
 /*----------------------------------------------------------------------------
-			Set all LEDs off
+			Set defined 40 LEDs symbol on display
  *----------------------------------------------------------------------------*/
 void turn_symbol(uint8_t matrix[], uint8_t green, uint8_t red, uint8_t blue) {
 	uint8_t i;
@@ -405,4 +413,92 @@ void turn_symbol(uint8_t matrix[], uint8_t green, uint8_t red, uint8_t blue) {
 			turn_pixel_on(i, green, red, blue);
 	}
 }
+
+/*----------------------------------------------------------------------------
+			Set defined 40 LEDs symbol on display
+ *----------------------------------------------------------------------------*/
+void return_sym(uint8_t notif_tab[60], uint8_t pos) {
+	uint8_t i, j=0, k, l=0;
+	for (i=0; i<60; i++) {
+		if(i == pos+l) {
+			for(k=0; k<8; k++) {
+				Sym_part[k+j]=notif_tab[k+l+pos];
+			}
+			j += 8; l += 12;
+		}
+	}
+}
+
+/*----------------------------------------------------------------------------
+			Scroll display of desired symbol over a RGBs matrix
+ *----------------------------------------------------------------------------*/
+void display_symbol(uint8_t sym_matrix[60], uint8_t green, uint8_t red, uint8_t blue) {
+	uint8_t part;
+	for (part=0; part<5; part++) {
+		set_matrix_off();
+		return_sym(sym_matrix, part);
+	  turn_symbol(Sym_part, green, red, blue);
+	  start_DMA();
+		delay_mc(200);
+	}
+}
+
+/*----------------------------------------------------------------------------
+			Display all unanswered notifications. Scroll them through a screen
+ *----------------------------------------------------------------------------*/
+void scroll_syms(void) {
+	uint8_t cnt, cnt_int;
+	for (cnt=0; cnt<NUM_OF_NOTIFS; cnt++) {
+	 switch(cnt) {
+		 case 0: {//SMS
+			 uint8_t Sym_full[60] = {0, 0, 1, 1, 1,  1,  1,  1, 1, 1, 0, 0, 
+										           0, 0, 1, 1, 0,  0,  0,  0, 1, 1, 0, 0,
+										           0, 0, 1, 0, 1,  1,  1,  1, 0, 1, 0, 0,
+										           0, 0, 1, 1, 0,  0,  0,  0, 1, 1, 0, 0,
+										           0, 0, 1, 1, 1,  1,  1,  1, 1, 1, 0, 0};
+			 for(cnt_int = 0; cnt_int<Notif_tab[cnt]; cnt_int++) display_symbol(Sym_full, 25, 25, 0);
+		 }
+			 break;
+		 case 1: {//PHONE_CALL
+			 uint8_t Sym_full[60] = {0, 0, 0, 0, 1,  1,  1,  0, 0, 0, 0, 0, 
+										           0, 0, 0, 1, 0,  0,  0,  1, 1, 1, 0, 0,
+										           0, 0, 0, 1, 1,  0,  0,  1, 1, 1, 0, 0,
+										           0, 0, 1, 1, 1,  0,  0,  1, 1, 0, 0, 0,
+										           0, 0, 1, 1, 0,  0,  0,  0, 0, 0, 0, 0};
+			 for(cnt_int = 0; cnt_int<Notif_tab[cnt]; cnt_int++) display_symbol(Sym_full, 25, 0, 0);
+		 }
+			 break;
+		 case 2: {//E_MAIL
+			 uint8_t Sym_full[60] = {0, 0, 0, 1, 1,  1,  1,  1, 0, 0, 0, 0, 
+										           0, 0, 1, 0, 0,  0,  0,  0, 1, 0, 0, 0,
+										           0, 0, 1, 0, 1,  1,  1,  0, 1, 0, 0, 0,
+										           0, 0, 1, 0, 1,  0,  1,  1, 1, 0, 0, 0,
+										           0, 0, 1, 0, 1,  1,  1,  0, 0, 0, 0, 0};
+			 for(cnt_int = 0; cnt_int<Notif_tab[cnt]; cnt_int++) display_symbol(Sym_full, 50, 50, 50);
+		 }
+			 break;
+		 case 3: {//BATTERY
+			 uint8_t Sym_full[60] = {0, 0, 1, 1, 1,  1,  1,  1, 1, 1, 0, 0, 
+										              0, 0, 1, 0, 0,  0,  0,  1, 1, 1, 0, 0,
+										              0, 0, 1, 0, 0,  0,  0,  1, 1, 1, 0, 0,
+										              0, 0, 1, 1, 1,  1,  1,  1, 1, 1, 0, 0,
+										              0, 0, 0, 0, 0,  0,  0,  0, 0, 0, 0, 0};
+			 for(cnt_int = 0; cnt_int<Notif_tab[cnt]; cnt_int++) display_symbol(Sym_full, 0, 25, 0);
+		 }
+			 break;
+		 case 4: {//FACEBOOK
+			 uint8_t Sym_full[60] = {0, 0, 0, 0, 1,  1,  0,  1, 0, 0, 0, 0, 
+										           0, 0, 0, 1, 1,  0,  0,  1, 0, 0, 0, 0,
+										           0, 0, 1, 1, 1,  1,  0,  1, 1, 0, 0, 0,
+										           0, 0, 0, 1, 1,  0,  0,  1, 0, 1, 0, 0,
+										           0, 0, 0, 1, 1,  0,  0,  1, 1, 0, 0, 0};
+			 for(cnt_int = 0; cnt_int<Notif_tab[cnt]; cnt_int++) display_symbol(Sym_full, 0, 0, 25);
+		 }
+			 break;
+	 }
+	}
+	
+}
+
+
 
