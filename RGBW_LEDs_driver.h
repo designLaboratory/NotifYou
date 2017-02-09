@@ -26,4 +26,7 @@ void turn_pixel_off(uint16_t num_pixel);
 void set_matrix_off(void);
 void delay_mc(uint32_t value);
 void turn_symbol(uint8_t matrix[], uint8_t green, uint8_t red, uint8_t blue);
+void return_sym(uint8_t notif_tab[60], uint8_t pos);
+void display_symbol(uint8_t sym_matrix[60], uint8_t green, uint8_t red, uint8_t blue);
+void scroll_syms(void);
 #endif
