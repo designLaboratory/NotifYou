@@ -3,66 +3,91 @@
 /*----------------------------------------------------------------------------
 			VARIABLES AND CONSTANTS DECLARATIONS
  *----------------------------------------------------------------------------*/
+ /**
+ *
+ *  @brief Needed constants initialization
+ * 
+ *	Initialize constants needed for DMA trnasfer, GPIO port and timing adjustment.
+ *
+ */
 /* DMA TRANSFER */
-#define DMA_LEAD_ZEROS  	 2																					//zeros for start period
-#define DMA_TRAIL_ZEROS 	 1																					//zeros for start period
-#define RGB_DIODE_BITS     24																					//Bits to configure one diode
-#define NUM_OF_LEDS 			 40																					//leds number in strip
-#define RGB_MATRIX_BITS		 RGB_DIODE_BITS*NUM_OF_LEDS									//bits needed to program all the leds
+#define DMA_LEAD_ZEROS  	 2																					/**< zeros for start period */
+#define DMA_TRAIL_ZEROS 	 1																					/**< zeros for start period */
+#define RGB_DIODE_BITS     24																					/**< Bits to configure one diode */
+#define NUM_OF_LEDS 			 40																					/**< leds number in strip */
+#define RGB_MATRIX_BITS		 RGB_DIODE_BITS*NUM_OF_LEDS									/**< bits needed to program all the leds */
 /* OUTPUT PIN */
-#define OUT_PIN 				 	 2																					//D2 pin as output
-#define NSEC_TO_TICKS(nsec) ((nsec)*42/1000)													//function to change time to clock ticks
-#define USEC_TO_TICKS(usec) ((usec)*42)															  //function to change time to clock ticks
+#define OUT_PIN 				 	 2																					/**< D2 pin as output */
+#define NSEC_TO_TICKS(nsec) ((nsec)*42/1000)													/**< function to change time to clock ticks */
+#define USEC_TO_TICKS(usec) ((usec)*42)															  /**< function to change time to clock ticks */
 /* SYMBOLS DISPLAY */
-#define NUM_OF_NOTIFS			 5																					//Number of different notifications to be displayed
+#define NUM_OF_NOTIFS			 5																					/**< Number of different notifications to be displayed */
 
-/*----------------------------------------------------------------------------
-			Needed variables initialization
- *----------------------------------------------------------------------------*/
-const uint32_t CLK_NSEC = 1250;																														//how much nanoseconds take one period for configure diode
-const uint32_t tpm_period    = NSEC_TO_TICKS(CLK_NSEC); 																	//how much is it tiks, 52.5 tiks 52.5 * 23 ns = about 1210 nsec 
-const uint32_t tpm_p0_period = NSEC_TO_TICKS(250);																				//how much tiks take high state in zero
-const uint32_t tpm_p1_period = NSEC_TO_TICKS(650);																				//how much tiks take high state in zero
-const uint32_t guardtime_period = USEC_TO_TICKS(55);   																		//guardtime minimum 50 usec, time between frames
+/**
+ *
+ *  @brief Needed variables initialization
+ * 
+ *	Initialize needed clock constants and LED matrix variables.
+ *
+ */
+const uint32_t CLK_NSEC = 1250;																			/**< how much nanoseconds take one period for configure diode */
+const uint32_t tpm_period    = NSEC_TO_TICKS(CLK_NSEC); 						/**< how much is it tiks, 52.5 tiks 52.5 * 23 ns = about 1210 nsec */
+const uint32_t tpm_p0_period = NSEC_TO_TICKS(250);									/**< how much tiks take high state in zero */
+const uint32_t tpm_p1_period = NSEC_TO_TICKS(650);									/**< how much tiks take high state in zero */
+const uint32_t guardtime_period = USEC_TO_TICKS(55);   							/**< guardtime minimum 50 usec, time between frames */
 
-uint8_t LED_tab[NUM_OF_LEDS*3];           	 												//RGB table of pixels - NUM_OF_LEDS/RGB_DIODE_BITS
-uint16_t num_of_LEDs = NUM_OF_LEDS; 																	//Numbers of LEDs in strip as variable
-uint32_t DMA_out_mask = 0;																						//DMA mask setting output
-volatile uint8_t dma_done_status = 1;																	//DMA status variable (volatile intended since DMA_IRQ uses it)
+uint8_t LED_tab[NUM_OF_LEDS*3];           	 												/**< RGB table of pixels - NUM_OF_LEDS/RGB_DIODE_BITS */ 
+uint16_t num_of_LEDs = NUM_OF_LEDS; 																/**< Numbers of LEDs in strip as variable */
+uint32_t DMA_out_mask = 0;																					/**< DMA mask setting output */
+volatile uint8_t dma_done_status = 1;																/**< DMA status variable (volatile intended since DMA_IRQ uses it) */
 
-/*----------------------------------------------------------------------------
-			Variables needed for matrix display initialization
- *----------------------------------------------------------------------------*/
-uint8_t Sym_part[40];																								//Part of whole symbol displayed on RGBs
-uint8_t Notif_tab[NUM_OF_NOTIFS] = {1, 1, 0, 1, 1};									//Table to hold unanswered notofications
+/**
+ *
+ *  @brief Matrix display variables initialization
+ * 
+ *	Initialize variables needed for matrix diplay and those containing notifications
+ *
+ */
+uint8_t Sym_part[40];																								/**< Part of whole symbol displayed on RGBs */
+volatile uint8_t Notif_tab[NUM_OF_NOTIFS] = {0, 0, 0, 1, 0};				/**< TABLE TO HOLD OUR NOTIFICATIONS */
+volatile uint8_t cnt, cnt_int;																			/**< Helping variables */
 
-/*----------------------------------------------------------------------------
-			DMA DATA STRUCTURE
- *----------------------------------------------------------------------------*/
+/**
+ *
+ *  @brief DMA_data Structure
+ * 
+ *	Structure containing DMA tables that are used to transfer proper logic value through DMA transfer to selected pin.
+ *	And with that are steering the matrix.
+ *
+ */
 struct {
-    uint8_t start_t1_low[ DMA_LEAD_ZEROS ];																					//leading zeros if dma_words
-    uint8_t dma_words[ RGB_MATRIX_BITS ];																						//table of dma_words, size is 2*8 = 16, each element has 8 bits so 16 cases - 8 bits each						
-    uint8_t trailing_zeros_1[ DMA_TRAIL_ZEROS ];																		//trailing zeros for dma)words
-    uint8_t start_t0_high[ DMA_LEAD_ZEROS - 1 ];																		//zeros, first zeros before all_ones
-    uint8_t all_ones[ RGB_MATRIX_BITS ];																						//ones to set output as 1
-		uint8_t trailing_zeros_2[ DMA_TRAIL_ZEROS + 1 ];																//zeros to end of all_ones
+    uint8_t start_t1_low[ DMA_LEAD_ZEROS ];																				/**< leading zeros if dma_words */
+    uint8_t dma_words[ RGB_MATRIX_BITS ];																					/**< table of dma_words, size is 2*8 = 16, each element has 8 bits so 16 cases - 8 bits each */						
+    uint8_t trailing_zeros_1[ DMA_TRAIL_ZEROS ];																	/**< trailing zeros for dma)words */
+    uint8_t start_t0_high[ DMA_LEAD_ZEROS - 1 ];																	/**< zeros, first zeros before all_ones */
+    uint8_t all_ones[ RGB_MATRIX_BITS ];																					/**< ones to set output as 1 */
+	uint8_t trailing_zeros_2[ DMA_TRAIL_ZEROS + 1 ];																/**< zeros to end of all_ones */
 } dma_data;
 
-/*----------------------------------------------------------------------------
-			DMA DATA STRUCTURE #1
- *----------------------------------------------------------------------------*/
+/**
+ *
+ *  @brief DMA module enums
+ * 
+ *	Enums containing DMA channel sources and numbers of used DMA channels.
+ *
+ */
 
-enum DMA_MUX_SRC {																																				//enum for number of dma soures
-    DMA_MUX_SRC_TPM0_CH_0  = 24,																													//number of dma source TPM0 CH0
-    DMA_MUX_SRC_TPM0_CH_1,																																//number of dma source TPM0 CH1
-    DMA_MUX_SRC_TPM0_OVFLW = 54,																												  //number of dma source TPM0 Overflow
+enum DMA_MUX_SRC {																																/**< enum for number of dma soures */
+    DMA_MUX_SRC_TPM0_CH_0  = 24,																									/**< number of dma source TPM0 CH0 */
+    DMA_MUX_SRC_TPM0_CH_1,																												/**< number of dma source TPM0 CH1 */
+    DMA_MUX_SRC_TPM0_OVFLW = 54,																								  /**< number of dma source TPM0 Overflow */
 };
 
-enum DMA_CHANNEL {																																				//enum for DMA_MUX CHannels	
-    DMA_CHANNEL_START = 0,																																//DMA_CHANNEL 0
-    DMA_CHANNEL_0_LOW = 1,																																//DMA_CHANNEL 1
-    DMA_CHANNEL_1_LOW = 2,																																//DMA_CHANNEL 2
-};
+enum DMA_CHANNEL {																																/**< enum for DMA_MUX CHannels */	
+    DMA_CHANNEL_START = 0,																												/**< DMA_CHANNEL 0 */
+    DMA_CHANNEL_0_LOW = 1,																												/**< DMA_CHANNEL 1 */
+    DMA_CHANNEL_1_LOW = 2,																												/**< DMA_CHANNEL 2 */
+}; 
 
 /*----------------------------------------------------------------------------
 			Clocking the ports and GPIO initialization
@@ -86,7 +111,7 @@ enum DMA_CHANNEL {																																				//enum for DMA_MUX CHannel
 			 Timer Module Initialization
  *----------------------------------------------------------------------------*/
  void init_tpm() {
-	TPM0->SC |= TPM_SC_PS(0);																										//Prescaler Value - 1
+	TPM0->SC |= TPM_SC_PS(0);																									//Prescaler Value - 1
 	TPM0->SC |= TPM_SC_DMA_MASK;																								//DMA enable in TPM0
 	TPM0->SC |= TPM_SC_TOF_MASK;																								//Reset TPM0 overflow flag
 	TPM0->SC |= TPM_SC_CMOD(0);																									//Clock in TPM0 disabled
@@ -101,9 +126,9 @@ enum DMA_CHANNEL {																																				//enum for DMA_MUX CHannel
 	TPM0->CONTROLS[1].CnSC |= TPM_CnSC_ELSB_MASK;
 	TPM0->CONTROLS[1].CnSC |= TPM_CnSC_DMA_MASK;
 	//Set counting values
-  TPM0->CONTROLS[0].CnV = tpm_p0_period;																								//TPM0, CH0 will count to 250 ns
-  TPM0->CONTROLS[1].CnV = tpm_p1_period;																								//TPM1, CH0 will count to 650 ns
-  /* Clear pending and enable interrupts form TPM0 module */
+    TPM0->CONTROLS[0].CnV = tpm_p0_period;																								//TPM0, CH0 will count to 250 ns
+    TPM0->CONTROLS[1].CnV = tpm_p1_period;																								//TPM1, CH0 will count to 650 ns
+    /* Clear pending and enable interrupts form TPM0 module */
 	NVIC_ClearPendingIRQ(TPM0_IRQn);																											 
 	NVIC_EnableIRQ(TPM0_IRQn);																														
  }
@@ -114,17 +139,17 @@ enum DMA_CHANNEL {																																				//enum for DMA_MUX CHannel
  void init_dma() {
 	/* Reset DMA channels */
   DMAMUX0->CHCFG[DMA_CHANNEL_0_LOW] = 0;
-	DMAMUX0->CHCFG[DMA_CHANNEL_1_LOW] = 0;
-	DMAMUX0->CHCFG[DMA_CHANNEL_START] = 0;
+  DMAMUX0->CHCFG[DMA_CHANNEL_1_LOW] = 0;
+  DMAMUX0->CHCFG[DMA_CHANNEL_START] = 0;
 	/* Enable DMA channels */ 
-	DMAMUX0->CHCFG[DMA_CHANNEL_0_LOW] = DMAMUX_CHCFG_ENBL_MASK
-																		| DMAMUX_CHCFG_SOURCE(DMA_MUX_SRC_TPM0_CH_0); 		//t=tpm_p0_period: all of the 0 bits go low     
+  DMAMUX0->CHCFG[DMA_CHANNEL_0_LOW] = DMAMUX_CHCFG_ENBL_MASK
+									| DMAMUX_CHCFG_SOURCE(DMA_MUX_SRC_TPM0_CH_0); 		//t=tpm_p0_period: all of the 0 bits go low     
   DMAMUX0->CHCFG[DMA_CHANNEL_1_LOW] = DMAMUX_CHCFG_ENBL_MASK 													
-																		| DMAMUX_CHCFG_SOURCE(DMA_MUX_SRC_TPM0_CH_1);			//t=tpm_p1_period: all outputs go low 
+									| DMAMUX_CHCFG_SOURCE(DMA_MUX_SRC_TPM0_CH_1);		//t=tpm_p1_period: all outputs go low 
   DMAMUX0->CHCFG[DMA_CHANNEL_START] = DMAMUX_CHCFG_ENBL_MASK 													   
-																		| DMAMUX_CHCFG_SOURCE(DMA_MUX_SRC_TPM0_OVFLW);    //t=0: all enabled outputs go high on TPM0 overflow PWM
+								    | DMAMUX_CHCFG_SOURCE(DMA_MUX_SRC_TPM0_OVFLW);      //t=0: all enabled outputs go high on TPM0 overflow PWM
 	
-	/* Clear pending and enable interrupts form TPM0 module */
+	/* Clear pending and enable interrupts form DMA0 module */
 	NVIC_ClearPendingIRQ(DMA0_IRQn);																											 
 	NVIC_EnableIRQ(DMA0_IRQn);
  }
@@ -132,37 +157,37 @@ enum DMA_CHANNEL {																																				//enum for DMA_MUX CHannel
 			 DMA Transfer Initialization
  *----------------------------------------------------------------------------*/
  void init_dma_tables() {
-	 uint16_t i = 0;																															//Helping Variable
+	 uint16_t i = 0;																	//Helping Variable
 		for (i=0; i<(RGB_MATRIX_BITS); i++) {
-			dma_data.all_ones[i] = 255;																							//Initialize all_ones table
+			dma_data.all_ones[i] = 255;													//Initialize all_ones table
 		}		
 		for (i=0; i<DMA_LEAD_ZEROS; i++) {
-			dma_data.start_t1_low[i] = 0;																						//Initialize start_t1_low table
+			dma_data.start_t1_low[i] = 0;												//Initialize start_t1_low table
 		}
 		for (i=0; i<DMA_TRAIL_ZEROS; i++) {
-			dma_data.trailing_zeros_1[i] = 0;																				//Initialize trailing_zeros_1 table
+			dma_data.trailing_zeros_1[i] = 0;										    //Initialize trailing_zeros_1 table
 		}
 		for (i=0; i<DMA_LEAD_ZEROS-1; i++) {
-			dma_data.start_t0_high[i] = 0;																					//Initialize start_t0_high table
+			dma_data.start_t0_high[i] = 0;												//Initialize start_t0_high table
 		}
-		for (i=0; i<DMA_TRAIL_ZEROS+1; i++) {//usunalem '-1' za +1
-			dma_data.trailing_zeros_2[i] = 0;																				//Initialize trailing_zeros_2 table
+		for (i=0; i<DMA_TRAIL_ZEROS+1; i++) {
+			dma_data.trailing_zeros_2[i] = 0;											//Initialize trailing_zeros_2 table
 		}
  }
  /*----------------------------------------------------------------------------
 			 WS2812 LEDs Matrix Initialization
  *----------------------------------------------------------------------------*/
  void init_led_matrix() {
-	uint16_t i = 0;																															//Helping Variable
-		for (i = 0; i < (NUM_OF_LEDS*3); i++) {																	 	//clear matrix of pixels
+	uint16_t i = 0;																		//Helping Variable
+		for (i = 0; i < (NUM_OF_LEDS*3); i++) {											//clear matrix of pixels
 				LED_tab[i] = 0;
 		}
 		
-		for (i = 0; i < (RGB_MATRIX_BITS); i++) {																	//Clear table dma_words for DMA
+		for (i = 0; i < (RGB_MATRIX_BITS); i++) {										//Clear table dma_words for DMA
 			dma_data.dma_words[i] = 0;
 		}
 		
-	  DMA_out_mask = 1UL << OUT_PIN; 																						//mask for selected pin
+	  DMA_out_mask = 1UL << OUT_PIN; 													//mask for selected pin
  }
  
 /*----------------------------------------------------------------------------
@@ -182,12 +207,12 @@ enum DMA_CHANNEL {																																				//enum for DMA_MUX CHannel
 	 if (val & DMA_DSR_BCR_DONE_MASK) {
 		DMA0 -> DMA[DMA_CHANNEL_START].DSR_BCR = DMA_DSR_BCR_DONE_MASK;						//Reset DMA status if transfer is done
 	 }
-	 TPM0->SC |= TPM_SC_TOF_MASK;																								//Reset TOF Flag
-	 TPM0->CNT = 0;																															//Reset Counter
-	 TPM0->MOD = guardtime_period-1;																						//50 us period to latch the WS2812 diode colour
-	 TPM0->SC |= TPM_SC_PS(0)																									//Prescaler value - 1
-	          | TPM_SC_TOIE_MASK																							//TPM0 Overflow Interrupts Enable
-	          | TPM_SC_CMOD(1);																								//TPM0 Internal Clocking Enable
+	 TPM0->SC |= TPM_SC_TOF_MASK;															//Reset TOF Flag
+	 TPM0->CNT = 0;																			//Reset Counter
+	 TPM0->MOD = guardtime_period-1;														//50 us period to latch the WS2812 diode colour
+	 TPM0->SC |= TPM_SC_PS(0)																//Prescaler value - 1
+	          | TPM_SC_TOIE_MASK															//TPM0 Overflow Interrupts Enable
+	          | TPM_SC_CMOD(1);																//TPM0 Internal Clocking Enable
  }
  
 /*----------------------------------------------------------------------------
@@ -195,8 +220,8 @@ enum DMA_CHANNEL {																																				//enum for DMA_MUX CHannel
  *----------------------------------------------------------------------------*/
 void TPM0_IRQHandler() {																
   	TPM0->SC = 0;	
-		TPM0->SC |= TPM_SC_TOF_MASK;												//Reset TOF Flag
-		dma_done_status = 1;
+	TPM0->SC |= TPM_SC_TOF_MASK;												//Reset TOF Flag
+	dma_done_status = 1;
  }
  
 /*----------------------------------------------------------------------------
@@ -211,17 +236,17 @@ void dma_done(void) {
  *----------------------------------------------------------------------------*/
 void start_DMA() {
  uint32_t n_bytes = DMA_LEAD_ZEROS + DMA_TRAIL_ZEROS + RGB_MATRIX_BITS ; 					//Number of transfered bytes				 
- dma_done();																																			//Wait for DMA transfer to end																																																																			
- dma_done_status = 0;           																									//Reset DMA done status
+ dma_done();																				//Wait for DMA transfer to end																																																																			
+ dma_done_status = 0;           															//Reset DMA done status
 
- TPM0->SC |= TPM_SC_DMA_MASK;        																							//DMA0 enable
- TPM0->SC |= TPM_SC_PS(0);   																									    //Prescaling - 1	
- TPM0->SC |= TPM_SC_CMOD(0);   																									  //disable clocks
- TPM0->SC |= TPM_SC_TOF_MASK;  																									  //reset TPM0 overflow flag
+ TPM0->SC |= TPM_SC_DMA_MASK;        														//DMA0 enable
+ TPM0->SC |= TPM_SC_PS(0);   																//Prescaling - 1	
+ TPM0->SC |= TPM_SC_CMOD(0);   																//disable clocks
+ TPM0->SC |= TPM_SC_TOF_MASK;  																//reset TPM0 overflow flag
 
- TPM0->CNT = tpm_p0_period - 2 ;																								  //Set TPM0 counter value 
- TPM0->MOD = tpm_period - 1;       																					      //Set Modulo to 1250 ns
- TPM0->STATUS = 0xFFFFFFFF;																												//Clear All Channel Event Flags
+ TPM0->CNT = tpm_p0_period - 2 ;															//Set TPM0 counter value 
+ TPM0->MOD = tpm_period - 1;       															//Set Modulo to 1250 ns
+ TPM0->STATUS = 0xFFFFFFFF;																	//Clear All Channel Event Flags
  
  /* Reset DMA status */
  DMA0->DMA[DMA_CHANNEL_START].DSR_BCR = DMA_DSR_BCR_DONE_MASK; 													
@@ -230,51 +255,51 @@ void start_DMA() {
 
  	/* All bits => High State
      source is one word of 0 then 24 x 0xffffffff, then another 0 word
-		 first source go 1, tmp0 overflow is first */
-    DMA0->DMA[DMA_CHANNEL_START].SAR     = (uint32_t)(void *)dma_data.start_t0_high;			//source of data to transfer, second all ones go
-    DMA0->DMA[DMA_CHANNEL_START].DSR_BCR = DMA_DSR_BCR_BCR_MASK & n_bytes; 								//length of transfer in bytes
+	 first source go 1, tmp0 overflow is first */
+    DMA0->DMA[DMA_CHANNEL_START].SAR     = (uint32_t)(void *)dma_data.start_t0_high;		//source of data to transfer, second all ones go
+    DMA0->DMA[DMA_CHANNEL_START].DSR_BCR = DMA_DSR_BCR_BCR_MASK & n_bytes; 					//length of transfer in bytes
   /* Some bits (the 0 bits) => Low state.
      Triggered by TPM0_CH0
      Start 2 words before the actual data to avoid garbage pulses.
-		 when overflow transfer set output to low*/
-    DMA0->DMA[DMA_CHANNEL_0_LOW].SAR     = (uint32_t)(void *)dma_data.start_t1_low; 					//set source address
-    DMA0->DMA[DMA_CHANNEL_0_LOW].DSR_BCR = DMA_DSR_BCR_BCR_MASK & n_bytes; 									//length of transfer in bytes
+	 when overflow transfer set output to low*/
+    DMA0->DMA[DMA_CHANNEL_0_LOW].SAR     = (uint32_t)(void *)dma_data.start_t1_low; 		//set source address
+    DMA0->DMA[DMA_CHANNEL_0_LOW].DSR_BCR = DMA_DSR_BCR_BCR_MASK & n_bytes; 					//length of transfer in bytes
   /* All bits => Low state
      Triggered by TPM0_CH1
      source is constant 0x00000000 (first word of dmaWords)
-		 when overflow transfer set output to low */
-    DMA0->DMA[DMA_CHANNEL_1_LOW].SAR     = (uint32_t)(void *)dma_data.start_t1_low; 					//set source address
-    DMA0->DMA[DMA_CHANNEL_1_LOW].DSR_BCR = DMA_DSR_BCR_BCR_MASK & n_bytes; 									//length of transfer in bytes
+     when overflow transfer set output to low */
+    DMA0->DMA[DMA_CHANNEL_1_LOW].SAR     = (uint32_t)(void *)dma_data.start_t1_low; 		//set source address
+    DMA0->DMA[DMA_CHANNEL_1_LOW].DSR_BCR = DMA_DSR_BCR_BCR_MASK & n_bytes; 					//length of transfer in bytes
   
 	/* Set destination adress register */
     DMA0->DMA[DMA_CHANNEL_0_LOW].DAR = DMA0->DMA[DMA_CHANNEL_1_LOW].DAR = 
-		DMA0->DMA[DMA_CHANNEL_START].DAR = (uint32_t)(void *)&PTD->PDOR;
+	DMA0->DMA[DMA_CHANNEL_START].DAR = (uint32_t)(void *)&PTD->PDOR;
 		
 	/* Configure DMA Control Reg */
-    DMA0->DMA[DMA_CHANNEL_0_LOW].DCR  = DMA_DCR_EINT_MASK 															  //Interrupt Enable                           
-                                       | DMA_DCR_D_REQ_MASK 															//Clear ERQ on end of transfer/Request disable
-																			 | DMA_DCR_CS_MASK																	//single read/write transfer per request
-                                       | DMA_DCR_SINC_MASK 																//increment source each transfer
-																			 | DMA_DCR_ERQ_MASK																	//Enable peripheral request to enable transfer                                       
-                                       | DMA_DCR_SSIZE(1) 																//16-bit source transfers
-                                       | DMA_DCR_DSIZE(1); 																//16-bit destination transfers
+    DMA0->DMA[DMA_CHANNEL_0_LOW].DCR  = DMA_DCR_EINT_MASK 													//Interrupt Enable                           
+                                       | DMA_DCR_D_REQ_MASK 												//Clear ERQ on end of transfer/Request disable
+																			 | DMA_DCR_CS_MASK				//single read/write transfer per request
+                                       | DMA_DCR_SINC_MASK 													//increment source each transfer
+																			 | DMA_DCR_ERQ_MASK				//Enable peripheral request to enable transfer                                       
+                                       | DMA_DCR_SSIZE(1) 													//16-bit source transfers
+                                       | DMA_DCR_DSIZE(1); 													//16-bit destination transfers
 
-    DMA0->DMA[DMA_CHANNEL_1_LOW].DCR  = DMA_DCR_EINT_MASK 																//Interrupt Enable                                       
-                                       | DMA_DCR_D_REQ_MASK 															//Clear ERQ on end of transfer/Request disable
-																			 | DMA_DCR_CS_MASK																	//single read/write transfer per request
-																			 | DMA_DCR_ERQ_MASK																	//Enable peripheral request to enable transfer                                       
-                                       | DMA_DCR_SSIZE(1) 																//16-bit source transfers
-                                       | DMA_DCR_DSIZE(1); 																//16-bit destination transfers
+    DMA0->DMA[DMA_CHANNEL_1_LOW].DCR  = DMA_DCR_EINT_MASK 													//Interrupt Enable                                       
+                                       | DMA_DCR_D_REQ_MASK 												//Clear ERQ on end of transfer/Request disable
+																			 | DMA_DCR_CS_MASK				//single read/write transfer per request
+																			 | DMA_DCR_ERQ_MASK				//Enable peripheral request to enable transfer                                       
+                                       | DMA_DCR_SSIZE(1) 													//16-bit source transfers
+                                       | DMA_DCR_DSIZE(1); 													//16-bit destination transfers
 
-    DMA0->DMA[DMA_CHANNEL_START].DCR  = DMA_DCR_EINT_MASK 																//Interrupt Enable                                       
-                                       | DMA_DCR_D_REQ_MASK 															//Clear ERQ on end of transfer/Request disable
-																			 | DMA_DCR_CS_MASK																	//single read/write transfer per request
-                                       | DMA_DCR_SINC_MASK 																//increment source each transfer
-																			 | DMA_DCR_ERQ_MASK																	//Enable peripheral request to enable transfer                                       
-                                       | DMA_DCR_SSIZE(1) 																//16-bit source transfers
-                                       | DMA_DCR_DSIZE(1);																//16-bit destination transfers
+    DMA0->DMA[DMA_CHANNEL_START].DCR  = DMA_DCR_EINT_MASK 													//Interrupt Enable                                       
+                                       | DMA_DCR_D_REQ_MASK 												//Clear ERQ on end of transfer/Request disable
+																			 | DMA_DCR_CS_MASK				//single read/write transfer per request
+                                       | DMA_DCR_SINC_MASK 													//increment source each transfer
+																			 | DMA_DCR_ERQ_MASK				//Enable peripheral request to enable transfer                                       
+                                       | DMA_DCR_SSIZE(1) 													//16-bit source transfers
+                                       | DMA_DCR_DSIZE(1);													//16-bit destination transfers
 																			 
-    TPM0->SC |= TPM_SC_CMOD(1);         																									//Intern. Clocking Enabled
+    TPM0->SC |= TPM_SC_CMOD(1);         																	//Intern. Clocking Enabled
 }
 
 /*----------------------------------------------------------------------------
@@ -387,11 +412,11 @@ void delay_mc(uint32_t value){
 			Initialize all needed modules
  *----------------------------------------------------------------------------*/
 void init_Device() {
-	init_led_matrix();
-	init_dma_tables();
-	init_modules();
-	init_dma();
-	init_tpm();
+	init_led_matrix();			//WS2812b Matrix
+	init_dma_tables();			//DMA tables
+	init_modules();					//Clocking/GPIO
+	init_dma();							//DMA0 module
+	init_tpm();							//2 TPM channels
 }
 
 /*----------------------------------------------------------------------------
@@ -404,7 +429,7 @@ void set_matrix_off(void) {
 }
 
 /*----------------------------------------------------------------------------
-			Set defined 40 LEDs symbol on display
+			Set defined 40 LEDs symbol on display on desired colour
  *----------------------------------------------------------------------------*/
 void turn_symbol(uint8_t matrix[], uint8_t green, uint8_t red, uint8_t blue) {
 	uint8_t i;
@@ -415,7 +440,7 @@ void turn_symbol(uint8_t matrix[], uint8_t green, uint8_t red, uint8_t blue) {
 }
 
 /*----------------------------------------------------------------------------
-			Set defined 40 LEDs symbol on display
+			Set desired part of 60-element matrix to 40-element 'Sym_part' matrix
  *----------------------------------------------------------------------------*/
 void return_sym(uint8_t notif_tab[60], uint8_t pos) {
 	uint8_t i, j=0, k, l=0;
@@ -434,6 +459,7 @@ void return_sym(uint8_t notif_tab[60], uint8_t pos) {
  *----------------------------------------------------------------------------*/
 void display_symbol(uint8_t sym_matrix[60], uint8_t green, uint8_t red, uint8_t blue) {
 	uint8_t part;
+	/* Divide 60-element matrix to 5 40 element matrixes and display the one by one */
 	for (part=0; part<5; part++) {
 		set_matrix_off();
 		return_sym(sym_matrix, part);
@@ -447,7 +473,7 @@ void display_symbol(uint8_t sym_matrix[60], uint8_t green, uint8_t red, uint8_t 
 			Display all unanswered notifications. Scroll them through a screen
  *----------------------------------------------------------------------------*/
 void scroll_syms(void) {
-	uint8_t cnt, cnt_int;
+	
 	for (cnt=0; cnt<NUM_OF_NOTIFS; cnt++) {
 	 switch(cnt) {
 		 case 0: {//SMS
@@ -456,6 +482,11 @@ void scroll_syms(void) {
 										           0, 0, 1, 0, 1,  1,  1,  1, 0, 1, 0, 0,
 										           0, 0, 1, 1, 0,  0,  0,  0, 1, 1, 0, 0,
 										           0, 0, 1, 1, 1,  1,  1,  1, 1, 1, 0, 0};
+			if (Notif_tab[cnt] == 0) {
+				 set_matrix_off();
+				 start_DMA();
+			 }
+			else
 			 for(cnt_int = 0; cnt_int<Notif_tab[cnt]; cnt_int++) display_symbol(Sym_full, 25, 25, 0);
 		 }
 			 break;
@@ -465,16 +496,28 @@ void scroll_syms(void) {
 										           0, 0, 0, 1, 1,  0,  0,  1, 1, 1, 0, 0,
 										           0, 0, 1, 1, 1,  0,  0,  1, 1, 0, 0, 0,
 										           0, 0, 1, 1, 0,  0,  0,  0, 0, 0, 0, 0};
-			 for(cnt_int = 0; cnt_int<Notif_tab[cnt]; cnt_int++) display_symbol(Sym_full, 25, 0, 0);
+			 if (Notif_tab[cnt] == 0) {
+				 set_matrix_off();
+				 start_DMA();
+				 break;
+			 }
+			 else
+				for(cnt_int = 0; cnt_int<Notif_tab[cnt]; cnt_int++) display_symbol(Sym_full, 25, 0, 0);
 		 }
 			 break;
 		 case 2: {//E_MAIL
 			 uint8_t Sym_full[60] = {0, 0, 0, 1, 1,  1,  1,  1, 0, 0, 0, 0, 
-										           0, 0, 1, 0, 0,  0,  0,  0, 1, 0, 0, 0,
+															 0, 0, 1, 0, 0,  0,  0,  0, 1, 0, 0, 0,
 										           0, 0, 1, 0, 1,  1,  1,  0, 1, 0, 0, 0,
 										           0, 0, 1, 0, 1,  0,  1,  1, 1, 0, 0, 0,
 										           0, 0, 1, 0, 1,  1,  1,  0, 0, 0, 0, 0};
-			 for(cnt_int = 0; cnt_int<Notif_tab[cnt]; cnt_int++) display_symbol(Sym_full, 50, 50, 50);
+			 	if (Notif_tab[cnt] == 0) {
+				 set_matrix_off();
+				 start_DMA();
+				 break;
+			 }
+			 else
+				for(cnt_int = 0; cnt_int<Notif_tab[cnt]; cnt_int++) display_symbol(Sym_full, 50, 50, 50);
 		 }
 			 break;
 		 case 3: {//BATTERY
@@ -483,7 +526,13 @@ void scroll_syms(void) {
 										              0, 0, 1, 0, 0,  0,  0,  1, 1, 1, 0, 0,
 										              0, 0, 1, 1, 1,  1,  1,  1, 1, 1, 0, 0,
 										              0, 0, 0, 0, 0,  0,  0,  0, 0, 0, 0, 0};
-			 for(cnt_int = 0; cnt_int<Notif_tab[cnt]; cnt_int++) display_symbol(Sym_full, 0, 25, 0);
+			 if (Notif_tab[cnt] == 0) {
+				 set_matrix_off();
+				 start_DMA();
+				 break;
+			 }
+			 else
+				for(cnt_int = 0; cnt_int<Notif_tab[cnt]; cnt_int++) display_symbol(Sym_full, 0, 25, 0);
 		 }
 			 break;
 		 case 4: {//FACEBOOK
@@ -492,13 +541,17 @@ void scroll_syms(void) {
 										           0, 0, 1, 1, 1,  1,  0,  1, 1, 0, 0, 0,
 										           0, 0, 0, 1, 1,  0,  0,  1, 0, 1, 0, 0,
 										           0, 0, 0, 1, 1,  0,  0,  1, 1, 0, 0, 0};
-			 for(cnt_int = 0; cnt_int<Notif_tab[cnt]; cnt_int++) display_symbol(Sym_full, 0, 0, 25);
+			 if (Notif_tab[cnt] == 0) {
+				 set_matrix_off();
+				 start_DMA();
+				 break;
+			 }
+			 else
+			  for(cnt_int = 0; cnt_int<Notif_tab[cnt]; cnt_int++) display_symbol(Sym_full, 0, 0, 25);
 		 }
 			 break;
 	 }
 	}
 	
 }
-
-
 
