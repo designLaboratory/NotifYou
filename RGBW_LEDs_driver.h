@@ -14,6 +14,7 @@
 * @brief Include header of our Kinetis board  
 */
 #include "MKL46Z4.h"
+#include "uart.h"
 
 
 /*----------------------------------------------------------------------------

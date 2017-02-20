@@ -1,10 +1,16 @@
+/**
+*@file accelero.h
+*@date 19 Feb 2017
+*@brief Header file of NXP-KL46z accelerometer module driver
+*MMA8451Q is an a accelerometer module mounted on the board, connectced to PTE 24, 25 pins
+*/
+
 #ifndef ACCELERO_H
 #define ACCELERO_H
 
 #include "I2C.h"
 #include "MKL46Z4.h"
 #include "slcd.h"
-#include "RGBW_LEDs_driver.h"
 
 /**
  *

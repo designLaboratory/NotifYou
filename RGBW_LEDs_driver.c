@@ -49,7 +49,7 @@ volatile uint8_t dma_done_status = 1;																/**< DMA status variable (v
  *
  */
 uint8_t Sym_part[40];																								/**< Part of whole symbol displayed on RGBs */
-extern volatile uint8_t Notif_tab[5];// = {0, 0, 0, 1, 0};	/**< TABLE TO HOLD OUR NOTIFICATIONS */
+volatile uint8_t Notif_tab[NUM_OF_NOTIFS] = {0, 0, 0, 0, 0};				/**< TABLE TO HOLD OUR NOTIFICATIONS */
 volatile uint8_t cnt, cnt_int;																			/**< Helping variables */
 
 /**
@@ -417,11 +417,6 @@ void init_Device() {
 	init_modules();					//Clocking/GPIO
 	init_dma();							//DMA0 module
 	init_tpm();							//2 TPM channels
-	Notif_tab[0] = 0;
-	Notif_tab[1] = 0;
-	Notif_tab[2] = 0;
-	Notif_tab[3] = 0;
-	Notif_tab[4] = 0;
 }
 
 /*----------------------------------------------------------------------------
@@ -559,4 +554,3 @@ void scroll_syms(void) {
 	}
 	
 }
-
